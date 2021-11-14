@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YCA</title>
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/alpinejs" defer></script>
+</head>
+<body x-data="data()">
+    <div class="min-h-screen flex flex-col items-center justify-center bg-gray-900">
+        <button :class="listening ? 'text-green-500' : 'text-gray-100'" @click="recognise()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 " viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
+            </svg>
+        </button>
+        <div class="text-gray-100 mt-4" x-text="request"></div>
+        <div class="text-gray-100 mt-4 mb-4" x-text="response" x-show="!wikiSearch && !imageSearch"></div>
+        <div class="" x-show="imageSearch">
+            <div class="bg-white p-4 text-center rounded">Showing you some pictures of <span class="italic font-bold" x-text="imageSearchText"></span></div>
+            <div class="grid grid-cols-4 gap-2 mt-2 bg-white p-4 rounded">
+                <template x-for="image in images">
+                    <img :src="image.urls.thumb" alt="image.description">
+                </template>
+            </div>
+        </div>
+        <div class="" x-show="wikiSearch">
+            <div class="bg-white p-4 text-center rounded">Search results from wikipedia for <span class="italic font-bold" x-text="wikiSearchText"></span></div>
+            <div class="mt-2 bg-white p-4 rounded">
+                <template x-for="wikiLink in wikiLinks">
+                    <div class="bg-gray-100 shadow p-4 mt-2">
+                        <h2 class="text-lg font-semibold" x-text="wikiLink.title"></h2>
+                        <span class="mt-1" x-html="wikiLink.snippet"></span>
+                        <a :href="`https://en.wikipedia.org?curid=${wikiLink.pageid}`" target="_blank" class="text-blue-500 font-lg">Read more</a>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    <script>
+        function data(){
+            return {
+                minConfidence: 0.7,
+                listening: false,
+                request: "",
+                response: "",
+                recognise(){
+                    var $this = this;
+                    $this.listening = true;
+                    $this.request = "";
+                    $this.response = "";
+                    
+                    var SpeechRecognition = SpeechRecognition || webkitSpeechRecognition;
+                    var recognition = new SpeechRecognition();
+                    recognition.start();
+
+                    recognition.onresult = function(event){
+                        if(event.results[0][0].confidence > $this.minConfidence){
+                            $this.request = event.results[0][0].transcript.toLowerCase();
+                            $this.respond();
+                        } else {
+                            $this.request = "Sorry I didn't understand! Say that again please.";
+                        }
+                        $this.listening = false;
+                    }
+                },
+                phrases: [
+                    {
+                        questions: ["hello", "hello there", "hi there", "how are you"],
+                        answers: ["Hello there!", "Hello to you too!", "Hi, what's up?"],
+                    },
+                    {
+                        questions: ["bye", "gotta go", "see you later", "goodbye"],
+                        answers: ["See you later!", "Ba bye!", "Alvida"],
+                    },
+                ],
+
+                unsplashID: "ENTER YOUR OWN",
+                imageSearch: false,
+                imageSearchPattern: "show me some pictures of ",
+                imageSearchText: "",
+                images: [],
+                fetchImages: async function(){
+                    let url = "https://api.unsplash.com/search/photos/?orientation=landscape&content_filter=high&per_page=12&client_id="+this.unsplashID;
+                    let response = await fetch(url + "&query=" + this.imageSearchText);
+                    let data = await response.json();
+                    this.images = data.results;
+                    this.response = "Showing you some pictures of " + this.imageSearchText;
+                },
+
+                wikiSearch: false,
+                wikiSearchPattern: "can you search for ",
+                wikiSearchText: "potato",
+                wikiLinks: [],
+                fetchWiki: async function(){
+                    let url = `https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=5&srsearch=${this.wikiSearchText}`;
+                    let res = await fetch(url);
+                    let data = await res.json();
+                    this.wikiLinks = data.query.search;
+                    this.response = data.query.search[0].snippet.replace( /(<([^>]+)>)/ig, '') + ". If you want to read more, click on the links";
+                },
+
+                mathPhrases: [
+                    "can you add ", "can you subtract ", "can you multiply ", "can you divide ", "can you root "
+                ],
+                doMath(){
+                    const regex = /can you (\w+) (\d+) and (\d+)/i;
+                    const found = this.request.match(regex);
+                    if(found === null){
+                        this.response = "That makes no sense";
+                    } else {
+                        const operation = found[1];
+                        const num1 = parseInt(found[2]);
+                        const num2 = parseInt(found[3]);
+                        let result, noun;
+                        if(operation == "add"){
+                            result = num1 + num2;
+                            noun = "sum"
+                        } else if(operation == "subtract"){
+                            result = num1 - num2;
+                            noun = "difference"
+                        } else if(operation == "multiply"){
+                            result = num1 * num2;
+                            noun = "product"
+                        } else if(operation == "divide"){
+                            result = (num1 / num2).toFixed(2);
+                            noun = "quotient"
+                        } else if(operation == "root"){
+                            result = Math.sqrt(num1).toFixed(2) + " and " + Math.sqrt(num2).toFixed(2) + " respectively";
+                            noun = "square root"
+                        }
+                        this.response = `The ${noun} of ${num1} and ${num2} is ${result}`;
+                    }
+                },
+
+                respond: async function(){
+                    var $this = this;
+
+                    let answers = $this.phrases.filter( phrase => phrase.questions.includes($this.request) )[0]?.answers;
+
+                    if( $this.request.search($this.imageSearchPattern) != -1 ){
+                        $this.imageSearchText = $this.request.substring($this.imageSearchPattern.length);
+                        $this.imageSearch = true;
+                        $this.wikiSearch = false;
+                        await $this.fetchImages();
+                    } else if( $this.request.search($this.wikiSearchPattern) != -1 ){
+                        $this.wikiSearchText = $this.request.substring($this.wikiSearchPattern.length);
+                        $this.wikiSearch = true;
+                        $this.imageSearch = false;
+                        await $this.fetchWiki();
+                    } else if($this.mathPhrases.filter( mathPhrase => $this.request.search(mathPhrase) != -1 )?.length > 0 ) {
+                        $this.doMath();
+                        $this.imageSearch = false;
+                        $this.wikiSearch = false;
+                    } else if(answers?.length > 0) {
+                        $this.imageSearch = false;
+                        $this.wikiSearch = false;
+                        $this.response = answers[ Math.floor(Math.random() * answers.length) ];
+                    } else {
+                        $this.imageSearch = false;
+                        $this.wikiSearch = false;
+                        $this.response = "You said: '" + $this.request + "'. I don't have a response for you!";
+                    }
+                    $this.speak();
+                },
+                speak(){
+                    var speech = new SpeechSynthesisUtterance();
+                    speech.text = this.response;
+                    window.speechSynthesis.speak(speech);
+                },
+            };
+        }
+    </script>
+</body>
+</html>
